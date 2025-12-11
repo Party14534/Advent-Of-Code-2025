@@ -43,8 +43,13 @@ func stateIsIt(m *Machine, state []int) bool {
 	return true
 }
 
-func getKey(s []int) string {
-	return fmt.Sprint(s)
+func getKey(s []int) uint64 {
+    h := uint64(14695981039346656037) // FNV offset
+    for _, v := range s {
+        h ^= uint64(v)
+        h *= 1099511628211 // FNV prime
+    }
+    return h
 }
 
 func addWire(state *[]int, wire Wire) {
@@ -64,13 +69,11 @@ func closeness(goal []int, current []int) int {
 	closeness := 0
 	
 	for i := range goal {
-		//fmt.Println(current[i], goal[i])
 		if current[i] > goal[i] { return -1 }
 		
 		closeness += goal[i] - current[i]
 	}
 
-	//fmt.Println("--",closeness)
 	return closeness
 }
 
@@ -81,7 +84,7 @@ func getSolution5 (m *Machine) {
 	}
 
 	state := make([]int, len(m.joltage))
-	visited := make(map[string]bool)
+	visited := make(map[uint64]bool)
 	visited[getKey(state)] = true
 
 	for {
@@ -97,7 +100,6 @@ func getSolution5 (m *Machine) {
 		choices := make([]Choice, 0, len(m.wirings))
 		for _, wire := range m.wirings {
 			safe := slices.Contains(wire.lights, minIndex)
-			if !safe { continue }
 
 			newState := append([]int{}, state...)
 			addWire(&newState, wire)
@@ -108,6 +110,7 @@ func getSolution5 (m *Machine) {
 
 			wireCloseness := closeness(m.joltage, newState)
 			if wireCloseness == - 1 { continue }
+			if !safe { wireCloseness += 1000 }
 			choices = append(choices, Choice{close: wireCloseness, wire: wire})
 		}
 
@@ -131,130 +134,17 @@ func getSolution5 (m *Machine) {
 		if choices[0].close == 0 { return }
 	}
 
-}
-
-func getSolution3(m *Machine) {
-	type QueueItem struct {
-		state []int
-		solution []Wire
-		close int
-	}
-
-	type Choice struct {
-		close int
-		wire Wire
-	}
-
-	initialState := make([]int, len(m.joltage))
-	queue := make([]QueueItem, 1)
-	queue[0] = QueueItem{state: initialState}
-	visited := make(map[string]bool)
-	visited[getKey(initialState)] = true
-
-	for len(queue) > 0 {
-		current := queue[len(queue) - 1]
-		queue = queue[:len(queue) - 1]
-		//if len(queue) % 100 == 0 {fmt.Println(current.state)}
-
-		choices := make([]QueueItem, 0, len(m.wirings))
-		for _, wire := range m.wirings {
-			newState := append([]int{}, current.state...)
-			addWire(&newState, wire)
-			_, ok := visited[getKey(newState)]
-			if ok { 
-				continue 
-			}
-
-			visited[getKey(newState)] = true
-			wireCloseness := closeness(m.joltage, newState)
-			if wireCloseness > 10 * 10 * 10 { continue }
-			choices = append(choices, QueueItem{
-				close: wireCloseness,
-				solution: append(current.solution, wire),
-				state: newState,
-			})
-		}
-
-		sort.Slice(choices, func(i, j int) bool {
-			return choices[i].close < choices[j].close
-		})
-
-		if len(current.solution) == 0 && len(choices) == 0 { 
-			panic("Error")
-		}
-
-		if len(choices) == 0 {
-			continue
-		}
-
-		if choices[0].close == 0 { 
-			m.solution = choices[0].solution
-			return 
-		}
-
-		queue = append(queue, choices...)
-	}
-
-}
-
-func getSolution2 (m *Machine) {
-	type Choice struct {
-		close int
-		wire Wire
-	}
-
-	state := make([]int, len(m.joltage))
-	visited := make(map[string]bool)
-	visited[getKey(state)] = true
-
-	for {
-		choices := make([]Choice, 0, len(m.wirings))
-		for _, wire := range m.wirings {
-			newState := append([]int{}, state...)
-			addWire(&newState, wire)
-			val, ok := visited[getKey(newState)]
-			if ok && val { 
-				continue 
-			}
-
-			wireCloseness := closeness(m.joltage, newState)
-			if wireCloseness > 10 * 10 * 10 { continue }
-			choices = append(choices, Choice{close: wireCloseness, wire: wire})
-		}
-
-		sort.Slice(choices, func(i, j int) bool {
-			return choices[i].close < choices[j].close
-		})
-
-		if len(m.solution) == 0 && len(choices) == 0 { 
-			panic("Error")
-		}
-
-		if len(choices) == 0 {
-			subWire(&state, m.solution[len(m.solution) - 1])
-			m.solution = m.solution[:len(m.solution) - 1]
-			continue
-		}
-
-		addWire(&state, choices[0].wire)
-		visited[getKey(state)] = true
-		m.solution = append(m.solution, choices[0].wire)
-		if choices[0].close == 0 { return }
-	}
 }
 
 func part2() {
 	var wg sync.WaitGroup
 
 	for i := range machines {
-		fmt.Printf("%v %v\n", float32(i)/float32(len(machines)) * 100, i)
-		//getSolution2(&machines[i])
-		//getSolution5(&machines[i])
 		wg.Add(1)
 		go func(m *Machine, i int) {
 			defer wg.Done()
-			defer fmt.Println(i)
 			getSolution5(m)
+			fmt.Println(i, len(m.solution))
 		}(&machines[i], i)
 	}		
 
